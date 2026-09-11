@@ -51,6 +51,22 @@ const client = new Client({
   partials: [Partials.GuildMember]
 });
 
+client.on("error", err => {
+  console.error("Discord client error:", err.message);
+});
+
+client.on("shardError", err => {
+  console.error("Discord shard error:", err.message);
+});
+
+process.on("unhandledRejection", err => {
+  console.error("Unhandled promise rejection:", err);
+});
+
+process.on("uncaughtException", err => {
+  console.error("Uncaught exception:", err);
+});
+
 const puzzleSessions = new Map();
 const cooldowns = new Map();
 const setupSessions = new Map();
@@ -274,10 +290,14 @@ function puzzleEmbed(session) {
     .setFooter({ text: `Puzzle ID: ${session.id}` });
 }
 
-function cleanupPuzzle(userId) {
-  const session = puzzleSessions.get(userId);
+function puzzleKey(guildId, userId) {
+  return `${guildId}:${userId}`;
+}
+
+function cleanupPuzzle(key) {
+  const session = puzzleSessions.get(key);
   if (session?.timer) clearTimeout(session.timer);
-  puzzleSessions.delete(userId);
+  puzzleSessions.delete(key);
 }
 
 function cleanupCooldowns() {
@@ -533,6 +553,7 @@ async function requireAdmin(interaction) {
 async function startPuzzle(interaction) {
   const guild = interaction.guild;
   const userId = interaction.user.id;
+  const key = puzzleKey(guild.id, userId);
   const config = getGuildConfig(guild.id);
 
   if (!config.roleId) {
@@ -577,7 +598,7 @@ async function startPuzzle(interaction) {
     return;
   }
 
-  cleanupPuzzle(userId);
+  cleanupPuzzle(key);
 
   await interaction.editReply({
     embeds: [verificationEmbed("กำลังสร้าง Puzzle...", "กำลังเตรียมระบบยืนยันตัวตน")]
@@ -589,10 +610,10 @@ async function startPuzzle(interaction) {
   session.attempts = 0;
   session.roleId = role.id;
   session.timer = setTimeout(async () => {
-    const current = puzzleSessions.get(userId);
+    const current = puzzleSessions.get(key);
     if (!current || current.id !== session.id) return;
 
-    puzzleSessions.delete(userId);
+    puzzleSessions.delete(key);
 
     const record = {
       userId,
@@ -623,7 +644,7 @@ async function startPuzzle(interaction) {
     }
   }, PUZZLE_TTL);
 
-  puzzleSessions.set(userId, session);
+  puzzleSessions.set(key, session);
 
   await interaction.editReply({
     embeds: [puzzleEmbed(session)],
@@ -633,7 +654,8 @@ async function startPuzzle(interaction) {
 
 async function handlePuzzle(interaction, sessionId, index) {
   const userId = interaction.user.id;
-  const session = puzzleSessions.get(userId);
+  const key = puzzleKey(interaction.guild.id, userId);
+  const session = puzzleSessions.get(key);
 
   if (!session || session.id !== sessionId || session.userId !== userId) {
     await interaction.reply({
@@ -644,7 +666,7 @@ async function handlePuzzle(interaction, sessionId, index) {
   }
 
   if (Date.now() >= session.expiresAt) {
-    cleanupPuzzle(userId);
+    cleanupPuzzle(key);
     await interaction.reply({
       ephemeral: true,
       embeds: [warningEmbed("Puzzle หมดอายุ", "กรุณากดเริ่มใหม่อีกครั้ง")]
@@ -689,7 +711,7 @@ async function handlePuzzle(interaction, sessionId, index) {
         roleId: session.roleId
       };
 
-      cleanupPuzzle(userId);
+      cleanupPuzzle(key);
       cooldowns.set(`${guild.id}:${userId}`, Date.now() + COOLDOWN_MS);
       addHistory(record);
       await sendVerificationLog(guild, record);
@@ -733,12 +755,12 @@ async function handlePuzzle(interaction, sessionId, index) {
       embeds: [errorEmbed("ไม่สามารถมอบยศได้", "กรุณาแจ้งผู้ดูแลให้ตรวจสอบสิทธิ์ของ Bot และลำดับยศ")],
       components: []
     });
-    cleanupPuzzle(userId);
+    cleanupPuzzle(key);
     return;
   }
 
   if (member.roles.cache.has(role.id)) {
-    cleanupPuzzle(userId);
+    cleanupPuzzle(key);
     await interaction.update({
       embeds: [infoEmbed("คุณได้รับยศแล้ว", `คุณมียศ ${role} อยู่แล้ว`)],
       components: []
@@ -768,7 +790,7 @@ async function handlePuzzle(interaction, sessionId, index) {
 
     addHistory(record);
     await sendVerificationLog(guild, record);
-    cleanupPuzzle(userId);
+    cleanupPuzzle(key);
 
     await interaction.editReply({
       embeds: [successEmbed("ยืนยันตัวตนสำเร็จ", "ยินดีต้อนรับเข้าสู่ Server!")
@@ -789,7 +811,7 @@ async function handlePuzzle(interaction, sessionId, index) {
       embeds: [errorEmbed("มอบยศไม่สำเร็จ", "Bot ไม่สามารถมอบยศให้คุณได้ กรุณาแจ้งผู้ดูแล")]
     }).catch(() => {});
 
-    cleanupPuzzle(userId);
+    cleanupPuzzle(key);
   }
 }
 
@@ -797,20 +819,16 @@ async function handlePuzzle(interaction, sessionId, index) {
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
-  try {
-    client.user.setPresence({
-      status: "online",
-      activities: [
-        {
-          name: "Developer : LevelingX",
-          type: ActivityType.Custom,
-          state: "Developer : LevelingX"
-        }
-      ]
-    });
-  } catch (err) {
-    console.error("setPresence error:", err.message);
-  }
+  client.user.setPresence({
+    status: "online",
+    activities: [
+      {
+        name: "Developer : LevelingX",
+        type: ActivityType.Custom,
+        state: "Developer : LevelingX"
+      }
+    ]
+  });
 
   try {
     const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -822,14 +840,6 @@ client.once("ready", async () => {
   } catch (err) {
     console.error("Command registration error:", err.message);
   }
-});
-
-client.on("error", err => {
-  console.error("Discord client error:", err.message);
-});
-
-client.on("shardError", err => {
-  console.error("Discord shard error:", err.message);
 });
 
 
@@ -1515,14 +1525,20 @@ client.on("interactionCreate", async interaction => {
 
 
 const healthServer = http.createServer((req, res) => {
-  if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
-    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ status: "ok" }));
+  const isCheckMethod = req.method === "GET" || req.method === "HEAD";
+
+  if (isCheckMethod && (req.url === "/" || req.url === "/health")) {
+    const body = JSON.stringify({ status: "ok" });
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Length": Buffer.byteLength(body)
+    });
+    res.end(req.method === "HEAD" ? undefined : body);
     return;
   }
 
   res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify({ status: "not_found" }));
+  res.end(req.method === "HEAD" ? undefined : JSON.stringify({ status: "not_found" }));
 });
 
 healthServer.on("error", err => {
@@ -1533,8 +1549,8 @@ healthServer.on("error", err => {
 setInterval(() => {
   const now = Date.now();
 
-  for (const [userId, session] of puzzleSessions) {
-    if (session.expiresAt <= now) cleanupPuzzle(userId);
+  for (const [key, session] of puzzleSessions) {
+    if (session.expiresAt <= now) cleanupPuzzle(key);
   }
 
   for (const [key, session] of setupSessions) {
@@ -1559,33 +1575,19 @@ healthServer.listen(PORT, "0.0.0.0", () => {
 
   client.login(TOKEN).catch(err => {
     console.error("Discord login failed:", err.message);
-    if (String(err.message).toLowerCase().includes("disallowed intents")) {
-      console.error(
-        "-> Fix: go to https://discord.com/developers/applications > your app > Bot, " +
-        "and enable 'SERVER MEMBERS INTENT' under Privileged Gateway Intents, then redeploy."
-      );
-    }
     process.exit(1);
   });
 });
 
-process.on("unhandledRejection", err => {
-  console.error("Unhandled promise rejection:", err instanceof Error ? err.stack : err);
-});
-
-process.on("uncaughtException", err => {
-  console.error("Uncaught exception:", err.stack || err.message);
-});
-
 process.on("SIGTERM", () => {
-  for (const userId of puzzleSessions.keys()) cleanupPuzzle(userId);
+  for (const key of puzzleSessions.keys()) cleanupPuzzle(key);
   healthServer.close();
   client.destroy();
   process.exit(0);
 });
 
 process.on("SIGINT", () => {
-  for (const userId of puzzleSessions.keys()) cleanupPuzzle(userId);
+  for (const key of puzzleSessions.keys()) cleanupPuzzle(key);
   healthServer.close();
   client.destroy();
   process.exit(0);
