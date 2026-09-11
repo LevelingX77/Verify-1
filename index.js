@@ -797,16 +797,20 @@ async function handlePuzzle(interaction, sessionId, index) {
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
-  client.user.setPresence({
-    status: "online",
-    activities: [
-      {
-        name: "Developer : LevelingX",
-        type: ActivityType.Custom,
-        state: "Developer : LevelingX"
-      }
-    ]
-  });
+  try {
+    client.user.setPresence({
+      status: "online",
+      activities: [
+        {
+          name: "Developer : LevelingX",
+          type: ActivityType.Custom,
+          state: "Developer : LevelingX"
+        }
+      ]
+    });
+  } catch (err) {
+    console.error("setPresence error:", err.message);
+  }
 
   try {
     const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -818,6 +822,14 @@ client.once("ready", async () => {
   } catch (err) {
     console.error("Command registration error:", err.message);
   }
+});
+
+client.on("error", err => {
+  console.error("Discord client error:", err.message);
+});
+
+client.on("shardError", err => {
+  console.error("Discord shard error:", err.message);
 });
 
 
@@ -1547,8 +1559,22 @@ healthServer.listen(PORT, "0.0.0.0", () => {
 
   client.login(TOKEN).catch(err => {
     console.error("Discord login failed:", err.message);
+    if (String(err.message).toLowerCase().includes("disallowed intents")) {
+      console.error(
+        "-> Fix: go to https://discord.com/developers/applications > your app > Bot, " +
+        "and enable 'SERVER MEMBERS INTENT' under Privileged Gateway Intents, then redeploy."
+      );
+    }
     process.exit(1);
   });
+});
+
+process.on("unhandledRejection", err => {
+  console.error("Unhandled promise rejection:", err instanceof Error ? err.stack : err);
+});
+
+process.on("uncaughtException", err => {
+  console.error("Uncaught exception:", err.stack || err.message);
 });
 
 process.on("SIGTERM", () => {
