@@ -31,10 +31,11 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 const PORT = Number(process.env.PORT || 3000);
 
-if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
-  console.error("Missing required environment variables: DISCORD_TOKEN, CLIENT_ID, GUILD_ID");
-  process.exit(1);
-}
+const missingVars = [
+  !TOKEN && "DISCORD_TOKEN",
+  !CLIENT_ID && "CLIENT_ID",
+  !GUILD_ID && "GUILD_ID"
+].filter(Boolean);
 
 const DEFAULT_COLOR = "#5865F2";
 const PUZZLE_TTL = 10_000;
@@ -1502,7 +1503,7 @@ client.on("interactionCreate", async interaction => {
 
 
 const healthServer = http.createServer((req, res) => {
-  if (req.method === "GET" && req.url === "/health") {
+  if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ status: "ok" }));
     return;
@@ -1536,11 +1537,18 @@ loadData();
 
 healthServer.listen(PORT, "0.0.0.0", () => {
   console.log(`Health server listening on port ${PORT}`);
-});
 
-client.login(TOKEN).catch(err => {
-  console.error("Discord login failed:", err.message);
-  process.exit(1);
+  if (missingVars.length > 0) {
+    console.error(`Missing required environment variables: ${missingVars.join(", ")}`);
+    console.error("Set them in your hosting dashboard (e.g. Render > Environment) and redeploy.");
+    process.exit(1);
+    return;
+  }
+
+  client.login(TOKEN).catch(err => {
+    console.error("Discord login failed:", err.message);
+    process.exit(1);
+  });
 });
 
 process.on("SIGTERM", () => {
