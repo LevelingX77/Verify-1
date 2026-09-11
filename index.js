@@ -104,10 +104,10 @@ function getGuildConfig(guildId) {
   if (!db.guilds[guildId]) {
     db.guilds[guildId] = {
       embed: {
-        title: "🔐 ยืนยันตัวตนสมาชิก",
-        description: "ยินดีต้อนรับ! กรุณากดปุ่มด้านล่างเพื่อยืนยันตัวตน",
+        title: "🔐 LEVELINGX • VERIFICATION",
+        description: "ACCESS RESTRICTED คุณยังไม่ได้รับสิทธิ์เข้าถึงเซิร์ฟเวอร์ ยืนยันตัวตนผ่าน Puzzle สั้น ๆ เพื่อปลดล็อก Member Access > กดปุ่มด้านล่างเพื่อเข้าสู่ระบบ",
         image: "",
-        footer: "Verification System",
+        footer: "LevelingX",
         color: DEFAULT_COLOR
       },
       roleId: null,
@@ -278,7 +278,7 @@ function puzzleButtons(session) {
 function puzzleEmbed(session) {
   const remaining = Math.max(0, Math.ceil((session.expiresAt - Date.now()) / 1000));
   return verificationEmbed(
-    "👀 ค้นหาสัญลักษณ์ที่แตกต่าง",
+    "ค้นหาสัญลักษณ์ที่แตกต่าง",
     "เลือกช่องที่มีสัญลักษณ์แตกต่างจากช่องอื่น"
   )
     .addFields(
@@ -1209,7 +1209,7 @@ client.on("interactionCreate", async interaction => {
           new ActionRowBuilder().addComponents(
             new ButtonBuilder()
               .setCustomId("verify:start")
-              .setLabel("รับยศสมาชิก")
+              .setLabel("UNLOCK ACCESS")
               .setEmoji("🔓")
               .setStyle(ButtonStyle.Success)
           )
